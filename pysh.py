@@ -3,6 +3,19 @@
 import os
 from subprocess import call
 
+
+class Command:
+
+    def __init__(self, command, args):
+        self.command = command
+        self.args = args
+
+    def run(self):
+        output, code = call([command] + args)
+        print(output)
+        return output, code
+
+
 def main():
 
     while True:
