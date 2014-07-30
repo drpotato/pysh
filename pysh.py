@@ -2,11 +2,23 @@
 
 import os
 
+__author__ = 'Chris Morgan'
+
 
 class Pysh:
+    """Pysh - The Python Shell
+
+    TODO:
+        run commands in history
+        manage background processes
+        piping
+        intelligent prompt
+        use arrow keys to navigate history
+    """
 
     def __init__(self):
         self.history = [] # I want to move this to a class later.
+        self.background_processes = [] # Wouldn't mind a class for this...
         self.prompt = "=> " # Maybe make this into a class also.
 
     def start(self):
@@ -16,10 +28,10 @@ class Pysh:
         while True:
             input_string = input(self.prompt)
 
-            # Lecturer will provide parsing for input string, this is temporary.
+            # Lecturer will provide parsing for input string, but this will do
+            # for now.
             input_list = input_string.split()
             programme, arguments = input_list[0], input_list[1:]
-
             if '&' in arguments:
                 arguments.pop()
                 background = True
@@ -28,11 +40,14 @@ class Pysh:
 
             # Switch statement for not-built in functionality.
             if programme == 'exit':
+                # Break out of loop.
                 break
             elif programme == 'cd':
+                # Expand the path and change the shell's directory.
                 real_path = os.path.expanduser(' '.join(arguments))
                 os.chdir(real_path)
             else:
+                # Run the command with arguments.
                 current_command = Command(programme, arguments, background)
                 current_command.run()
                 self.history.append(current_command)
@@ -80,7 +95,6 @@ class Command:
 
 
 def main():
-
     shell = Pysh()
     shell.start()
 
