@@ -3,6 +3,41 @@
 import os
 
 
+class Pysh:
+
+    def __init__(self):
+        self.history = [] # I want to move this to a class later.
+        self.prompt = "=> " # Maybe make this into a class also.
+
+    def start(self):
+        """starts the shell, listening until 'exit' is called
+        """
+
+        while True:
+            input_string = input(self.prompt)
+
+            # Lecturer will provide parsing for input string, this is temporary.
+            input_list = input_string.split()
+            programme, arguments = input_list[0], input_list[1:]
+
+            if '&' in arguments:
+                arguments.pop()
+                background = True
+            else:
+                background = False
+
+            # Switch statement for not-built in functionality.
+            if programme == 'exit':
+                break
+            elif programme == 'cd':
+                real_path = os.path.expanduser(' '.join(arguments))
+                os.chdir(real_path)
+            else:
+                current_command = Command(programme, arguments, background)
+                current_command.run()
+                self.history.append(current_command)
+
+
 class Command:
 
     def __init__(self, programme, arguments=[], background=False):
@@ -16,8 +51,13 @@ class Command:
         :type background:   bool
         """
         self.programme = programme
-        self.arguments = [programme] + arguments # Slightly hacky, as the arguments need to contain the programme name.
+
+        # Slightly hacky, as the arguments need to contain the programme name.
+        self.arguments = [programme] + arguments
         self.background = background
+
+        # If the process runs in the background, we still need to return this.
+        self.status = None
 
     def run(self):
         """runs the command and manages the child process
@@ -41,20 +81,8 @@ class Command:
 
 def main():
 
-    while True:
-
-        # Grab user input and split it up into command and args.
-        command_array = input('=> ').split()
-        command  = Command(command_array[0], command_array[1:])
-
-        # Switch statement to determine command behaviour.
-        if command.programme == 'exit':
-            break
-        elif command.programme == 'cd':
-            os.chdir(command.args[1])
-        else:
-            command.run()
-
+    shell = Pysh()
+    shell.start()
 
 if __name__ == '__main__':
     main()
