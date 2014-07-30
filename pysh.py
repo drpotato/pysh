@@ -6,7 +6,8 @@ __author__ = 'Chris Morgan'
 
 
 class Pysh:
-    """Pysh - The Python Shell
+    """
+    Pysh - The Python Shell
 
     TODO:
         run commands in history
@@ -17,12 +18,16 @@ class Pysh:
     """
 
     def __init__(self):
+        """
+        Initialises the Pysh instance.
+        """
         self.history = [] # I want to move this to a class later.
         self.background_processes = [] # Wouldn't mind a class for this...
         self.prompt = "=> " # Maybe make this into a class also.
 
     def start(self):
-        """starts the shell, listening until 'exit' is called
+        """
+        Starts the shell, listening until 'exit' is called.
         """
 
         while True:
@@ -56,7 +61,8 @@ class Pysh:
 class Command:
 
     def __init__(self, programme, arguments=[], background=False):
-        """constructor for command
+        """
+        Initialises a Command instance.
 
         :param programme:   name of programme to be executed
         :type programme:    str or unicode
@@ -75,7 +81,8 @@ class Command:
         self.status = None
 
     def run(self):
-        """runs the command and manages the child process
+        """
+        Runs the command and manages the child process.
 
         :returns:   returns child process id and exist status
         :rtype:     tuple(int, int)
