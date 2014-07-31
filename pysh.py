@@ -60,7 +60,7 @@ class Pysh:
 
 class Command:
 
-    def __init__(self, programme, arguments=[], background=False):
+    def __init__(self, programme, arguments=list(), background=False):
         """
         Initialises a Command instance.
 
