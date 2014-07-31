@@ -21,9 +21,9 @@ class Pysh:
         """
         Initialises the Pysh instance.
         """
-        self.history = [] # I want to move this to a class later.
-        self.background_processes = [] # Wouldn't mind a class for this...
-        self.prompt = "=> " # Maybe make this into a class also.
+        self.history = []  # I want to move this to a class later.
+        self.background_processes = []  # Wouldn't mind a class for this...
+        self.prompt = "=> "  # Maybe make this into a class also.
 
     def start(self):
         """
@@ -51,11 +51,22 @@ class Pysh:
                 # Expand the path and change the shell's directory.
                 real_path = os.path.expanduser(' '.join(arguments))
                 os.chdir(real_path)
+            elif programme in ['h', 'history']:
+                if arguments:
+                    self.history[int(arguments[0])].run()
+                    self.history.append(self.history[int(arguments[0])])
+                else:
+                    self.print_history()
+
             else:
                 # Run the command with arguments.
                 current_command = Command(programme, arguments, background)
                 current_command.run()
                 self.history.append(current_command)
+
+    def print_history(self):
+        for index, item in enumerate(self.history):
+            print("[%i]:\t%s" % (index, str(item)))
 
 
 class Command:
@@ -67,7 +78,7 @@ class Command:
         :param programme:   name of programme to be executed
         :type programme:    str or unicode
         :param arguments:   arguments for the programme
-        :type arguments:    list(str, ...)
+        :type arguments:    list([str, ...])
         :param background:  whether to run program or not
         :type background:   bool
         """
@@ -77,8 +88,19 @@ class Command:
         self.arguments = [programme] + arguments
         self.background = background
 
-        # If the process runs in the background, we still need to return this.
-        self.status = None
+
+    def __str__(self):
+        """
+        Format the command into it's original form.
+        :return:
+        """
+
+        command_string = ' '.join(self.arguments)
+
+        if self.background:
+            command_string += ' &'
+
+        return command_string
 
     def run(self):
         """
@@ -87,18 +109,24 @@ class Command:
         :returns:   returns child process id and exist status
         :rtype:     tuple(int, int)
         """
-        # Fork the current process and store the child process id for later use.
-        self.child = os.fork()
+        # Fork the current process and store the child process id for later
+        # use.
+        child = os.fork()
 
-        if self.child == 0:
-            # If this process is the child, replace current execution with programme to run.
+        # If the process runs in the background, we still need to return this.
+        status = None
+
+        if child == 0:
+            # If this process is the child, replace current execution with
+            # programme to run.
             os.execvp(self.programme, self.arguments)
 
         if not self.background:
-            # If the process is not going to run in the background, wait for the programme to finish.
-            _, self.status = os.waitpid(self.child, 0)
+            # If the process is not going to run in the background, wait for
+            # the programme to finish.
+            _, status = os.waitpid(child, 0)
 
-        return self.child, self.status
+        return child, status
 
 
 def main():
