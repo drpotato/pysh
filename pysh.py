@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import os
+import sys
 
 __author__ = 'Chris Morgan'
 
@@ -35,6 +36,9 @@ class Pysh:
         while True:
             input_string = input(self.prompt)
 
+            # For future reference:
+            # sub_commands = [list(sub_list) for seperator, sub_list in groupby(command_list, lambda command:command=='|') if not seperator]
+
             # Lecturer will provide parsing for input string, but this will do
             # for now.
             input_list = input_string.split()
@@ -64,7 +68,8 @@ class Pysh:
 
 class Command:
 
-    def __init__(self, programme, arguments=list(), background=False):
+    def __init__(self, programme, arguments=list(), background=False,
+                 read=sys.stdin.fileno(), write=sys.stdout.fileno()):
         """
         Initialises a Command instance.
 
@@ -80,6 +85,10 @@ class Command:
         # Slightly hacky, as the arguments need to contain the programme name.
         self.arguments = [programme] + arguments
         self.background = background
+
+        # Set the input output pipes up.
+        self.read = read
+        self.write = write
 
     def run(self):
         """
@@ -98,6 +107,16 @@ class Command:
         if child == 0:
             # If this process is the child, replace current execution with
             # programme to run.
+
+            # Set up input/output.
+            os.dup2(self.read, sys.stdin.fileno())
+            os.dup2(self.write, sys.stdout.fileno())
+
+            if self.read != sys.stdin.fileno():
+                os.close(self.read)
+            if self.write != sys.stdout.fileno():
+                os.close(self.write)
+
             os.execvp(self.programme, self.arguments)
 
         if not self.background:
@@ -150,6 +169,15 @@ class BuiltInCommand(Command):
         # Return whether or not the command needs to be added to history.
         return self.programme not in ('h', 'history')
 
+class CommandPipeList:
+    """
+
+    """
+    def __init__(self, commands):
+        self.commands = commands
+
+    def run(self):
+        pass
 
 class History:
     """
