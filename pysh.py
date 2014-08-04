@@ -10,7 +10,6 @@ class Pysh:
     Pysh - The Python Shell
 
     TODO:
-        run commands in history
         manage background processes
         piping
         error handling
@@ -156,7 +155,7 @@ class History:
     """
     History implements the `Borg <http://code.activestate.com/recipes/66531>`
     design pattern. The idea is that the history is kept in a constant state
-    no matter where it's needed throughout the shell.
+    no matter where it's accessed without passing around an instance reference.
     """
 
     # Initalises the initial state of the history object.
@@ -168,12 +167,13 @@ class History:
     def __str__(self):
         """
         Generates a string on the history in an overly complicated manner.
-        Awesome one liner though. Essencially enumerates the command list,
+        Awesome one liner though. Essentially enumerates the command list,
         formats the indexes and commands into a list of strings then joins
         them with the new line character. This was to solve a new line being
-        printed when using a standard for loop.
+        printed at the end when using a standard for loop.
         """
-        return '\n'.join('[%i]\t%s' % (index + 1, command) for index, command in enumerate(self.commands))
+        return '\n'.join('[%i]\t%s' % (index + 1, command)
+                         for index, command in enumerate(self.commands))
 
     def run(self, command_number):
         """
