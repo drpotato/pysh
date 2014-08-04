@@ -129,7 +129,7 @@ class BuiltInCommand(Command):
 
         elif self.programme == 'cd':
             # Expand the path and change the shell's directory.
-            real_path = os.path.expanduser(' '.join(self.arguments))
+            real_path = os.path.expanduser(' '.join(self.arguments[1:]))
             os.chdir(real_path)
 
         elif self.programme == 'pwd':
