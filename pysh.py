@@ -13,15 +13,18 @@ class Pysh:
         run commands in history
         manage background processes
         piping
+        error handling
         intelligent prompt
         use arrow keys to navigate history
     """
+
+    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit')
 
     def __init__(self):
         """
         Initialises the Pysh instance.
         """
-        self.history = [] # I want to move this to a class later.
+        self.history = History()
         self.background_processes = [] # Wouldn't mind a class for this...
         self.prompt = "=> " # Maybe make this into a class also.
 
@@ -43,19 +46,17 @@ class Pysh:
             else:
                 background = False
 
-            # Switch statement for not-built in functionality.
-            if programme == 'exit':
-                # Break out of loop.
-                break
-            elif programme == 'cd':
-                # Expand the path and change the shell's directory.
-                real_path = os.path.expanduser(' '.join(arguments))
-                os.chdir(real_path)
+            # Check for built in functionality.
+            if programme in self.__built_in_commands:
+                command = BuiltInCommand(programme, arguments, background)
+                if command.run():
+                    self.history.append(command)
+
             else:
                 # Run the command with arguments.
-                current_command = Command(programme, arguments, background)
-                current_command.run()
-                self.history.append(current_command)
+                command = Command(programme, arguments, background)
+                command.run()
+                self.history.append(command)
 
 
 class Command:
@@ -99,6 +100,80 @@ class Command:
             _, self.status = os.waitpid(self.child, 0)
 
         return self.child, self.status
+
+    def __str__(self):
+        if self.background:
+            ampersand = '&'
+        else:
+            ampersand = ''
+
+        return ' '.join(self.arguments + [ampersand])
+
+
+class BuiltInCommand(Command):
+
+    def run(self):
+        """
+        Run the built in command.
+        """
+        if self.programme == 'exit':
+            # Break out of loop.
+            exit()
+
+        elif self.programme == 'cd':
+            # Expand the path and change the shell's directory.
+            real_path = os.path.expanduser(' '.join(self.arguments))
+            os.chdir(real_path)
+
+        elif self.programme == 'pwd':
+            # Print the current working directory.
+            print(os.getcwd())
+
+        elif self.programme in ('h', 'history'):
+            # Access this shell's history
+            history = History()
+
+            if len(self.arguments) > 1:
+                # Run a previously run command.
+                history.run(int(self.arguments[1]))
+
+            else:
+                # Print the history to the user.
+                print(history)
+
+        # Return whether or not the command needs to be added to history.
+        return self.programme not in ('h', 'history')
+
+
+class History:
+    """
+    History implements the `Borg <http://code.activestate.com/recipes/66531>`
+    design pattern. The idea is that the history is kept in a constant state
+    no matter where it's needed throughout the shell.
+    """
+
+    # Initalises the initial state of the history object.
+    __shared_state = {'commands': []}
+
+    def __init__(self):
+        self.__dict__ = self.__shared_state
+
+    def __str__(self):
+        return_string = ''
+        for index, command in enumerate(self.commands):
+            return_string += '[%i]\t%s\n' % (index + 1, str(command))
+        return return_string
+
+    def run(self, command_number):
+        """
+        Run a previously executed command.
+        """
+        command = self.commands[command_number - 1]
+        command.run()
+        self.append(command)
+
+    def append(self, command):
+        self.commands.append(command)
 
 
 def main():
