@@ -37,7 +37,7 @@ class Pysh:
             input_string = input(self.prompt)
 
             # For future reference:
-            # sub_commands = [list(sub_list) for seperator, sub_list in groupby(command_list, lambda command:command=='|') if not seperator]
+            # sub_commands = [list(sub_list) for seperator, sub_list in sys.groupby(command_list, lambda command:command=='|') if not seperator]
 
             # Lecturer will provide parsing for input string, but this will do
             # for now.
