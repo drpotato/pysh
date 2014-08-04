@@ -159,10 +159,14 @@ class History:
         self.__dict__ = self.__shared_state
 
     def __str__(self):
-        return_string = ''
-        for index, command in enumerate(self.commands):
-            return_string += '[%i]\t%s\n' % (index + 1, str(command))
-        return return_string
+        """
+        Generates a string on the history in an overly complicated manner.
+        Awesome one liner though. Essencially enumerates the command list,
+        formats the indexes and commands into a list of strings then joins
+        them with the new line character. This was to solve a new line being
+        printed when using a standard for loop.
+        """
+        return '\n'.join('[%i]\t%s' % (index + 1, command) for index, command in enumerate(self.commands))
 
     def run(self, command_number):
         """
