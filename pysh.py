@@ -58,17 +58,21 @@ class Pysh:
                 command.run()
                 self.history.append(command)
 
+    def print_history(self):
+        for index, item in enumerate(self.history):
+            print("[%i]:\t%s" % (index, str(item)))
+
 
 class Command:
 
-    def __init__(self, programme, arguments=[], background=False):
+    def __init__(self, programme, arguments=list(), background=False):
         """
         Initialises a Command instance.
 
         :param programme:   name of programme to be executed
         :type programme:    str or unicode
         :param arguments:   arguments for the programme
-        :type arguments:    list(str, ...)
+        :type arguments:    list([str, ...])
         :param background:  whether to run program or not
         :type background:   bool
         """
@@ -78,9 +82,6 @@ class Command:
         self.arguments = [programme] + arguments
         self.background = background
 
-        # If the process runs in the background, we still need to return this.
-        self.status = None
-
     def run(self):
         """
         Runs the command and manages the child process.
@@ -88,18 +89,24 @@ class Command:
         :returns:   returns child process id and exist status
         :rtype:     tuple(int, int)
         """
-        # Fork the current process and store the child process id for later use.
-        self.child = os.fork()
+        # Fork the current process and store the child process id for later
+        # use.
+        child = os.fork()
 
-        if self.child == 0:
-            # If this process is the child, replace current execution with programme to run.
+        # If the process runs in the background, we still need to return this.
+        status = None
+
+        if child == 0:
+            # If this process is the child, replace current execution with
+            # programme to run.
             os.execvp(self.programme, self.arguments)
 
         if not self.background:
-            # If the process is not going to run in the background, wait for the programme to finish.
-            _, self.status = os.waitpid(self.child, 0)
+            # If the process is not going to run in the background, wait for
+            # the programme to finish.
+            _, status = os.waitpid(child, 0)
 
-        return self.child, self.status
+        return child, status
 
     def __str__(self):
         if self.background:
