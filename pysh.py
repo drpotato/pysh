@@ -68,10 +68,10 @@ class Pysh:
         """
         Breaks the line up into shell words.
         """
-        shell_lexicon = shlex.shlex(line, posix=True)
-        shell_lexicon.whitespace_split = False
-        shell_lexicon.wordchars += '#$+-,./?@^='
-        return list(shell_lexicon)
+        shell_segments = shlex.shlex(line, posix=True)
+        shell_segments.whitespace_split = False
+        shell_segments.wordchars += '#$+-,./?@^='
+        return list(shell_segments)
 
 class Command:
 
@@ -119,10 +119,8 @@ class Command:
             os.dup2(self.read, sys.stdin.fileno())
             os.dup2(self.write, sys.stdout.fileno())
 
-            if self.read != sys.stdin.fileno():
-                os.close(self.read)
-            if self.write != sys.stdout.fileno():
-                os.close(self.write)
+            # There's no need to close the file descriptors as they're not
+            # inheritable in python 3.4.
 
             os.execvp(self.programme, self.arguments)
 
@@ -176,6 +174,7 @@ class BuiltInCommand(Command):
         # Return whether or not the command needs to be added to history.
         return self.programme not in ('h', 'history')
 
+
 class CommandPipeList:
     """
 
@@ -185,6 +184,7 @@ class CommandPipeList:
 
     def run(self):
         pass
+
 
 class History:
     """
