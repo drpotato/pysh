@@ -92,11 +92,7 @@ class Command:
         self.arguments = [programme] + arguments
         self.background = background
 
-        # Set the input output pipes up.
-        self.read_fd = sys.stdin.fileno()
-        self.write_fd = sys.stdout.fileno()
-
-    def run(self):
+    def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno()):
         """
         Runs the command and manages the child process.
 
@@ -115,8 +111,8 @@ class Command:
             # programme to run.
 
             # Set up input/output.
-            os.dup2(self.read_fd, sys.stdin.fileno())
-            os.dup2(self.write_fd, sys.stdout.fileno())
+            os.dup2(read_fd, sys.stdin.fileno())
+            os.dup2(write_fd, sys.stdout.fileno())
 
             # There's no need to close the file descriptors as they're not
             # inheritable in python 3.4.
@@ -129,12 +125,6 @@ class Command:
             _, status = os.waitpid(child, 0)
 
         return child, status
-
-    def set_read_pipe(self, read_fd):
-        self.read_fd = read_fd
-
-    def set_write_pipe(self, write_fd):
-        self.write_fd = write_fd
 
     def __str__(self):
         if self.background:
