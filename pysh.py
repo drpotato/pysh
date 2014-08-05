@@ -75,8 +75,7 @@ class Pysh:
 
 class Command:
 
-    def __init__(self, programme, arguments=list(), background=False,
-                 read=sys.stdin.fileno(), write=sys.stdout.fileno()):
+    def __init__(self, programme, arguments=list(), background=False):
         """
         Initialises a Command instance.
 
@@ -94,8 +93,8 @@ class Command:
         self.background = background
 
         # Set the input output pipes up.
-        self.read = read
-        self.write = write
+        self.read_fd = sys.stdin.fileno()
+        self.write_fd = sys.stdout.fileno()
 
     def run(self):
         """
@@ -116,8 +115,8 @@ class Command:
             # programme to run.
 
             # Set up input/output.
-            os.dup2(self.read, sys.stdin.fileno())
-            os.dup2(self.write, sys.stdout.fileno())
+            os.dup2(self.read_fd, sys.stdin.fileno())
+            os.dup2(self.write_fd, sys.stdout.fileno())
 
             # There's no need to close the file descriptors as they're not
             # inheritable in python 3.4.
@@ -130,6 +129,12 @@ class Command:
             _, status = os.waitpid(child, 0)
 
         return child, status
+
+    def set_read_pipe(self, read_fd):
+        self.read_fd = read_fd
+
+    def set_write_pipe(self, write_fd):
+        self.write_fd = write_fd
 
     def __str__(self):
         if self.background:
@@ -183,8 +188,11 @@ class CommandPipeList:
         self.commands = commands
 
     def run(self):
-        pass
 
+        read_fd = sys.stdin.fileno()
+        _, write_fd = os.pipe()
+        for i in range(len(self.commands) - 1):
+            self.commands[i].run()
 
 class History:
     """
