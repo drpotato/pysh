@@ -115,7 +115,7 @@ class Command:
             os.dup2(write_fd, sys.stdout.fileno())
 
             # There's no need to close the file descriptors as they're not
-            # inheritable in python 3.4.
+            # inheritable as of python 3.4.
 
             os.execvp(self.programme, self.arguments)
 
@@ -180,9 +180,10 @@ class CommandPipeList:
     def run(self):
 
         read_fd = sys.stdin.fileno()
-        _, write_fd = os.pipe()
+        write_fd = None
         for i in range(len(self.commands) - 1):
-            self.commands[i].run()
+            _, write_fd = os.pipe()
+            self.commands[i].run(read_fd, write_fd)
 
 class History:
     """
