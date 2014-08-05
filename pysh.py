@@ -2,6 +2,8 @@
 
 import os
 import sys
+import shlex
+import itertools
 
 __author__ = 'Chris Morgan'
 
@@ -36,13 +38,14 @@ class Pysh:
         while True:
             input_string = input(self.prompt)
 
+            # Get shell words from input
+            command_list = self.parse_line(input_string)
             # For future reference:
-            # sub_commands = [list(sub_list) for seperator, sub_list in sys.groupby(command_list, lambda command:command=='|') if not seperator]
-
+            sub_commands = [list(sub_list) for seperator, sub_list in itertools.groupby(command_list, lambda command:command=='|') if not seperator]
+            print(sub_commands)
             # Lecturer will provide parsing for input string, but this will do
             # for now.
-            input_list = input_string.split()
-            programme, arguments = input_list[0], input_list[1:]
+            programme, arguments = sub_commands[0][0], sub_commands[0][1:]
             if '&' in arguments:
                 arguments.pop()
                 background = True
@@ -61,10 +64,14 @@ class Pysh:
                 command.run()
                 self.history.append(command)
 
-    def print_history(self):
-        for index, item in enumerate(self.history):
-            print("[%i]:\t%s" % (index, str(item)))
-
+    def parse_line(self, line):
+        """
+        Breaks the line up into shell words.
+        """
+        shell_lexicon = shlex.shlex(line, posix=True)
+        shell_lexicon.whitespace_split = False
+        shell_lexicon.wordchars += '#$+-,./?@^='
+        return list(shell_lexicon)
 
 class Command:
 
