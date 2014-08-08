@@ -27,8 +27,8 @@ class Pysh:
         Initialises the Pysh instance.
         """
         self.history = History()
-        self.background_processes = [] # Wouldn't mind a class for this...
-        self.prompt = "=> " # Maybe make this into a class also.
+        self.background_processes = []  # Wouldn't mind a class for this...
+        self.prompt = "=> "  # Maybe make this into a class also.
 
     def start(self):
         """
@@ -41,7 +41,8 @@ class Pysh:
             # Get shell words from input
             command_list = self.parse_line(input_string)
             # For future reference:
-            sub_commands = [list(sub_list) for seperator, sub_list in itertools.groupby(command_list, lambda command:command=='|') if not seperator]
+            sub_commands = [list(sub_list) for separator, sub_list in
+                            itertools.groupby(command_list, lambda word:word == '|') if not separator]
             print(sub_commands)
             # Lecturer will provide parsing for input string, but this will do
             # for now.
@@ -64,7 +65,8 @@ class Pysh:
                 command.run()
                 self.history.append(command)
 
-    def parse_line(self, line):
+    @staticmethod
+    def parse_line(line):
         """
         Breaks the line up into shell words.
         """
@@ -72,6 +74,7 @@ class Pysh:
         shell_segments.whitespace_split = False
         shell_segments.wordchars += '#$+-,./?@^='
         return list(shell_segments)
+
 
 class Command:
 
@@ -137,7 +140,7 @@ class Command:
 
 class BuiltInCommand(Command):
 
-    def run(self):
+    def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno()):
         """
         Run the built in command.
         """
@@ -179,11 +182,8 @@ class CommandPipeList:
 
     def run(self):
 
-        read_fd = sys.stdin.fileno()
-        write_fd = None
-        for i in range(len(self.commands) - 1):
-            _, write_fd = os.pipe()
-            self.commands[i].run(read_fd, write_fd)
+        pass
+
 
 class History:
     """
@@ -192,11 +192,15 @@ class History:
     no matter where it's accessed without passing around an instance reference.
     """
 
-    # Initalises the initial state of the history object.
-    __shared_state = {'commands': []}
+    # Initialises the initial state of the history object.
+    __shared_state = {}
 
     def __init__(self):
         self.__dict__ = self.__shared_state
+
+        # If commands doesn't exist in the dictionary, add it.
+        if 'commands' not in self.__dict__:
+            self.commands = []
 
     def __str__(self):
         """
