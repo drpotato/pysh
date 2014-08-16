@@ -3,6 +3,7 @@
 import os
 import sys
 import shlex
+import signal
 import itertools
 
 __author__ = 'Chris Morgan'
@@ -20,23 +21,33 @@ class Pysh:
         use arrow keys to navigate history
     """
 
-    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit')
+    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit', 'jobs')
 
     def __init__(self):
         """
         Initialises the Pysh instance.
         """
         self.history = History()
-        self.background_processes = []  # Wouldn't mind a class for this...
-        self.prompt = "> "  # Maybe make this into a class also.
+        self.jobs = Jobs()
+        self.prompt = "> "  # TODO: Add customisation.
 
     def start(self):
         """
         Starts the shell, listening until 'exit' is called.
         """
 
+        signal.signal(signal.SIGINT, self.do_nothing)
+        signal.signal(signal.SIGTSTP, self.do_nothing)
+
         while True:
-            input_string = input(self.prompt)
+
+            # Stop pycharm complaining.
+            input_string = None
+
+            try:
+                input_string = input(self.prompt)
+            except EOFError:
+                exit()
 
             # Get shell words from input
             command_strings = self.parse_line(input_string)
@@ -56,8 +67,13 @@ class Pysh:
                 command = CommandPipeList(commands)
                 command.run()
                 self.history.append(command)
-            elif commands[0].run():
+            elif commands and commands[0].run():
                 self.history.append(commands[0])
+
+
+    @staticmethod
+    def do_nothing(signal, frame):
+        pass
 
 
     @staticmethod
@@ -71,7 +87,7 @@ class Pysh:
         shell_segments.whitespace_split = False
         shell_segments.wordchars += '#$+-,./?@^='
 
-        return [tuple(sub_list) for separator, sub_list in
+        return [list(sub_list) for separator, sub_list in
                 itertools.groupby(list(shell_segments), lambda word: word == '|') if not separator]
 
 
@@ -134,7 +150,7 @@ class Command:
         else:
             ampersand = ''
 
-        return ' '.join(self.arguments + tuple(ampersand))
+        return ' '.join(self.arguments + [ampersand])
 
 
 class BuiltInCommand(Command):
@@ -247,6 +263,12 @@ class History:
 
     def append(self, command):
         self.commands.append(command)
+
+
+class Jobs:
+
+    def __init__(self):
+        pass
 
 
 def main():
