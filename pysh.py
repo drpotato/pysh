@@ -43,23 +43,21 @@ class Pysh:
             # Lecturer will provide parsing for input string, but this will do
             # for now.
 
+            # Build the list of commands to run. Built in commands are differentiated from other commands.
             commands = []
             for command in command_strings:
-
                 if command[0] in self.__built_in_commands:
                     commands.append(BuiltInCommand(command))
-
                 else:
                     commands.append(Command(command))
 
+            # If there are multiple commands, we need to create a piping list, otherwise just run the command.
             if len(commands) > 1:
                 command = CommandPipeList(commands)
                 command.run()
                 self.history.append(command)
-
-            else:
-                if commands[0].run():
-                    self.history.append(commands[0])
+            elif commands[0].run():
+                self.history.append(commands[0])
 
 
     @staticmethod
@@ -136,7 +134,7 @@ class Command:
         else:
             ampersand = ''
 
-        return ' '.join(self.arguments + [ampersand])
+        return ' '.join(self.arguments + tuple(ampersand))
 
 
 class BuiltInCommand(Command):
@@ -205,7 +203,10 @@ class CommandPipeList:
         # Wait for the pipe running process to finish.
         _, status = os.wait()
 
-        return
+        return status
+
+    def __str__(self):
+        return ' | '.join([str(command) for command in self.commands])
 
 
 class History:
