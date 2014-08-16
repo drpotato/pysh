@@ -28,7 +28,7 @@ class Pysh:
         """
         self.history = History()
         self.background_processes = []  # Wouldn't mind a class for this...
-        self.prompt = "=> "  # Maybe make this into a class also.
+        self.prompt = "> "  # Maybe make this into a class also.
 
     def start(self):
         """
@@ -39,46 +39,47 @@ class Pysh:
             input_string = input(self.prompt)
 
             # Get shell words from input
-            command_list = self.parse_line(input_string)
-            # For future reference:
-            sub_commands = [list(sub_list) for separator, sub_list in
-                            itertools.groupby(command_list, lambda word:word == '|') if not separator]
-            print(sub_commands)
+            command_strings = self.parse_line(input_string)
             # Lecturer will provide parsing for input string, but this will do
             # for now.
-            programme, arguments = sub_commands[0][0], sub_commands[0][1:]
-            if '&' in arguments:
-                arguments.pop()
-                background = True
-            else:
-                background = False
 
-            # Check for built in functionality.
-            if programme in self.__built_in_commands:
-                command = BuiltInCommand(programme, arguments, background)
-                if command.run():
-                    self.history.append(command)
+            commands = []
+            for command in command_strings:
 
-            else:
-                # Run the command with arguments.
-                command = Command(programme, arguments, background)
+                if command[0] in self.__built_in_commands:
+                    commands.append(BuiltInCommand(command))
+
+                else:
+                    commands.append(Command(command))
+
+            if len(commands) > 1:
+                command = CommandPipeList(commands)
                 command.run()
                 self.history.append(command)
+
+            else:
+                if commands[0].run():
+                    self.history.append(commands[0])
+
 
     @staticmethod
     def parse_line(line):
         """
         Breaks the line up into shell words.
+        :returns: Returns a list of
+        :rtype:
         """
         shell_segments = shlex.shlex(line, posix=True)
         shell_segments.whitespace_split = False
         shell_segments.wordchars += '#$+-,./?@^='
-        return list(shell_segments)
+
+        return [tuple(sub_list) for separator, sub_list in
+                itertools.groupby(list(shell_segments), lambda word: word == '|') if not separator]
 
 
 class Command:
 
-    def __init__(self, programme, arguments=list(), background=False):
+    def __init__(self, arguments):
         """
         Initialises a Command instance.
 
@@ -89,11 +90,13 @@ class Command:
         :param background:  whether to run program or not
         :type background:   bool
         """
-        self.programme = programme
-
-        # Slightly hacky, as the arguments need to contain the programme name.
-        self.arguments = [programme] + arguments
-        self.background = background
+        self.programme = arguments[0]
+        self.arguments = arguments
+        if self.arguments[-1] == '&':
+            self.arguments.pop()
+            self.background = True
+        else:
+            self.background = False
 
     def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno()):
         """
@@ -106,9 +109,6 @@ class Command:
         # use.
         child = os.fork()
 
-        # If the process runs in the background, we still need to return this.
-        status = None
-
         if child == 0:
             # If this process is the child, replace current execution with
             # programme to run.
@@ -117,15 +117,16 @@ class Command:
             os.dup2(read_fd, sys.stdin.fileno())
             os.dup2(write_fd, sys.stdout.fileno())
 
-            # There's no need to close the file descriptors as they're not
-            # inheritable as of python 3.4.
-
+            # Replace the current programme with execvp
             os.execvp(self.programme, self.arguments)
+
+        # If the process runs in the background, we still need to return this.
+        status = None
 
         if not self.background:
             # If the process is not going to run in the background, wait for
             # the programme to finish.
-            _, status = os.waitpid(child, 0)
+            _, status = os.wait()
 
         return child, status
 
@@ -182,7 +183,29 @@ class CommandPipeList:
 
     def run(self):
 
-        pass
+        child = os.fork()
+
+        if child == 0:
+
+            last_read = sys.stdin.fileno()
+
+            for command in self.commands[:-1]:
+
+                read, write = os.pipe()
+                command.background = True
+                command.run(read_fd=last_read, write_fd=write)
+
+                last_read = read
+
+            self.commands[-1].run(read_fd=last_read, write_fd=sys.stdout.fileno())
+
+            # Finished piping off the commands, exit.
+            exit()
+
+        # Wait for the pipe running process to finish.
+        _, status = os.wait()
+
+        return
 
 
 class History:
