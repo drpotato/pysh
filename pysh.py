@@ -29,7 +29,7 @@ class Pysh:
         """
         self.history = History()
         self.jobs = Jobs()
-        self.prompt = "> "  # TODO: Add customisation.
+        self.prompt = '> '  # TODO: Add customisation.
 
     def start(self):
         """
@@ -51,20 +51,25 @@ class Pysh:
 
             # Get shell words from input
             command_strings = self.parse_line(input_string)
-            # Lecturer will provide parsing for input string, but this will do
-            # for now.
+
+            if command_strings and command_strings[-1][-1] == '&':
+                background = True
+                command_strings[-1].pop()
+            else:
+                background = False
+
 
             # Build the list of commands to run. Built in commands are differentiated from other commands.
             commands = []
             for command in command_strings:
                 if command[0] in self.__built_in_commands:
-                    commands.append(BuiltInCommand(command))
+                    commands.append(BuiltInCommand(command, background=background))
                 else:
-                    commands.append(Command(command))
+                    commands.append(Command(command, background=background))
 
             # If there are multiple commands, we need to create a piping list, otherwise just run the command.
             if len(commands) > 1:
-                command = CommandPipeList(commands)
+                command = CommandPipeList(commands, background=background)
                 command.run()
                 self.history.append(command)
             elif commands and commands[0].run():
@@ -93,7 +98,7 @@ class Pysh:
 
 class Command:
 
-    def __init__(self, arguments):
+    def __init__(self, arguments, background=False):
         """
         Initialises a Command instance.
 
@@ -106,11 +111,7 @@ class Command:
         """
         self.programme = arguments[0]
         self.arguments = arguments
-        if self.arguments[-1] == '&':
-            self.arguments.pop()
-            self.background = True
-        else:
-            self.background = False
+        self.background = background
 
     def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno()):
         """
@@ -192,8 +193,9 @@ class CommandPipeList:
     """
 
     """
-    def __init__(self, commands):
+    def __init__(self, commands, background=False):
         self.commands = commands
+        self.background = background
 
     def run(self):
 
@@ -217,9 +219,10 @@ class CommandPipeList:
             exit()
 
         # Wait for the pipe running process to finish.
-        _, status = os.wait()
+        if not self.background:
+            _, status = os.wait()
+            return status
 
-        return status
 
     def __str__(self):
         return ' | '.join([str(command) for command in self.commands])
@@ -267,8 +270,26 @@ class History:
 
 class Jobs:
 
+    __shared_state = {}
+
     def __init__(self):
-        pass
+        self.__dict__ = self.__shared_state
+        if 'jobs' not in self.__dict__:
+            self.jobs = []
+
+    def __str__(self):
+        return '\n'.join('[%i]\t%s' % (index + 1, job)
+                         for index, job in enumerate(self.jobs))
+
+    def add_job(self, command, pid):
+        job = Job(command, pid)
+        self.jobs.append(job)
+
+class Job:
+
+    def __init__(self, command, pid):
+        self.command = command
+        self.pid = pid
 
 
 def main():
