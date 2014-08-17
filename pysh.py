@@ -355,9 +355,14 @@ class Jobs:
         return out[:-2]
 
     def add_job(self, command, pid):
-        job = Job(command, pid, len(self.jobs) + 1)
+
+        new_job_number = 1
+        if self.jobs:
+            new_job_number = self.jobs[-1].job_number + 1
+
+        job = Job(command, pid, new_job_number)
         self.jobs.append(job)
-        print('[%i]\t%s' % (len(self.jobs), str(job.command)))
+        print('[%i]\t%s' % (new_job_number, str(job.command)))
         threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
     def start_process(self, background=False):
