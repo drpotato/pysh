@@ -51,7 +51,7 @@ class Pysh:
         """
 
         signal.signal(signal.SIGINT, self.do_nothing)
-        signal.signal(signal.SIGTSTP, self.do_nothing)
+        signal.signal(signal.SIGTSTP, Command.stop_process)
 
         while True:
 
@@ -139,6 +139,8 @@ class Pysh:
 
 class Command:
 
+    __current_pid = 0
+
     def __init__(self, arguments, background=False):
         """
         Initialises a Command instance.
@@ -176,14 +178,21 @@ class Command:
             # Replace the current programme with execvp
             os.execvp(self.programme, self.arguments)
 
-
         if self.background:
             # Return the child pid immediatly when running in the background.
             return child, None
         else:
             # If the process is not going to run in the background, wait for
             # the programme to finish.
-            return  os.wait()
+            Command.__current_pid = child
+            child, status = os.wait()
+            Command.__current_pid = 0
+            return child, status
+
+    @staticmethod
+    def stop_process(sig, frame):
+        if Command.__current_pid:
+            os.kill(Command.__current_pid, signal.SIGSTOP)
 
     def __str__(self):
         if self.background:
@@ -218,6 +227,9 @@ class BuiltInCommand(Command):
         elif self.programme == 'pwd':
             # Print the current working directory.
             print(os.getcwd())
+
+        elif self.programme == 'jobs':
+            print(Jobs())
 
         elif self.programme in ('h', 'history'):
             # Access this shell's history
@@ -329,7 +341,7 @@ class Jobs:
             self.jobs = []
 
     def __str__(self):
-        return '\n'.join('[%i]\t%s' % (index + 1, job)
+        return '\n'.join('[%i]\t%s' % (index + 1, str(job))
                          for index, job in enumerate(self.jobs))
 
     def add_job(self, command, pid):
@@ -351,15 +363,21 @@ class Job:
         self.pid = pid
         self.job_number = job_number
 
-    def get_status(self):
-        process = subprocess.Popen(['ps', '-p', str(self.pid), '-o', 'state'], stdout=subprocess.PIPE)
-        status = process.stdout.readlines()[1].strip()
-        process.wait()
-        print(status)
-
-
     def __str__(self):
-        return ' '.join()
+        process = subprocess.Popen(['ps', '-p', str(self.pid), '-o', 'state'], stdout=subprocess.PIPE)
+        status = process.stdout.readlines()[1].strip().decode('ascii')[0]  # Eww
+        process.wait()
+        if status in ['S', 'I']:
+            status = 'sleeping'
+        elif status == 'R':
+            status = 'running'
+        elif status == 'Z':
+            status = 'zombie'
+        elif status == 'T':
+            status = 'stopped'
+        else:
+            status = 'dunno...'
+        return '%s %s' % (status, str(self.command))
 
 
 if __name__ == '__main__':
