@@ -1,12 +1,27 @@
 #! /usr/bin/env python3
 
 import os
+import struct
 import sys
 import shlex
 import signal
 import itertools
+import subprocess
+import fcntl
+import termios
+import readline
+import threading
 
 __author__ = 'Chris Morgan'
+
+
+# Use this later for flexibility.
+def get_prompt():
+
+    user = os.environ['USER']
+    dir = os.getcwd().split('/')[-1]
+
+    return '%s : %s > ' % (user, dir)
 
 
 class Pysh:
@@ -29,7 +44,6 @@ class Pysh:
         """
         self.history = History()
         self.jobs = Jobs()
-        self.prompt = '> '  # TODO: Add customisation.
 
     def start(self):
         """
@@ -45,7 +59,7 @@ class Pysh:
             input_string = None
 
             try:
-                input_string = input(self.prompt)
+                input_string = input(get_prompt())
             except EOFError:
                 exit()
 
@@ -79,20 +93,34 @@ class Pysh:
                 result = commands[0].run()
                 if result.__class__.__name__ == 'tuple':
                     pid, status = result
-                    print(result)
                     if status is None:
-                        job = Job(command, pid)
-                        job.get_status()
+                        self.jobs.add_job(commands[0], pid)
 
                 if result:
                     self.history.append(commands[0])
 
+    @staticmethod
+    def interupt_prompt(string=''):
+        # Grab the number of rows and columns of the terminal so we can clear it.
+        (rows, columns) = struct.unpack('hh', fcntl.ioctl(sys.stdout, termios.TIOCGWINSZ, '    '))
+
+        # Get the length of the current text in the terminal.
+        line_length = len(readline.get_line_buffer()) + len(get_prompt())
+
+        # This clears the line and moves the cursor down.
+        sys.stdout.write('\x1b[2K')
+        sys.stdout.write('\x1b[1A\x1b[2K' * int(line_length / columns))
+        sys.stdout.write('\x1b[0G')
+
+        print(string)
+
+        sys.stdout.write(get_prompt() + readline.get_line_buffer())
+        sys.stdout.flush()
 
 
     @staticmethod
     def do_nothing(signal, frame):
         pass
-
 
     @staticmethod
     def parse_line(line):
@@ -305,34 +333,34 @@ class Jobs:
                          for index, job in enumerate(self.jobs))
 
     def add_job(self, command, pid):
-        job = Job(command, pid)
+        job = Job(command, pid, len(self.jobs) + 1)
         self.jobs.append(job)
+        print('[%i]\t%s' % (len(self.jobs), str(job.command)))
+        threading.Thread(target=self.wait_job, args=tuple([job])).start()
+
+    @staticmethod
+    def wait_job(job):
+        os.waitpid(job.pid, 0)
+        Pysh.interupt_prompt('[%i]\t%i done\t%s' % (job.job_number, job.pid, str(job.command)))
+
 
 class Job:
 
-    def __init__(self, command, pid):
+    def __init__(self, command, pid, job_number):
         self.command = command
         self.pid = pid
+        self.job_number = job_number
 
     def get_status(self):
-        status_file = open(os.path.join('/proc', str(self.pid), 'status'), 'r')
-        status_list = [item.split(':') for item in status_file.read().split('\n') if item]
-        status = {}
-        for key, value in status_list:
-            status[key.strip()] = value.strip()
-
-        return status
-
-    def get_state(self):
-
+        process = subprocess.Popen(['ps', '-p', str(self.pid), '-o', 'state'], stdout=subprocess.PIPE)
+        status = process.stdout.readlines()[1].strip()
+        process.wait()
+        print(status)
 
 
     def __str__(self):
         return ' '.join()
 
 
-def main():
-    Pysh().start()
-
 if __name__ == '__main__':
-    main()
+    Pysh().start()
