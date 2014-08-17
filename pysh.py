@@ -21,7 +21,7 @@ def get_prompt():
     user = os.environ['USER']
     dir = os.getcwd().split('/')[-1]
 
-    return '%s : %s > ' % (user, dir)
+    return '[%s]->%s $ ' % (user, dir)
 
 
 class Pysh:
@@ -228,7 +228,9 @@ class BuiltInCommand(Command):
             print(os.getcwd())
 
         elif self.programme == 'jobs':
-            print(Jobs())
+            jobs = Jobs()
+            if jobs.no_jobs():
+                print(jobs)
 
         elif self.programme in ('h', 'history'):
             # Access this shell's history
@@ -238,7 +240,7 @@ class BuiltInCommand(Command):
                 # Run a previously run command.
                 return history.run(int(self.arguments[1]))
 
-            else:
+            elif history.no_history():
                 # Print the history to the user.
                 print(history)
                 return True
@@ -329,6 +331,9 @@ class History:
     def append(self, command):
         self.commands.append(command)
 
+    def no_history(self):
+        return len(self.commands)
+
 
 class Jobs:
 
@@ -339,9 +344,15 @@ class Jobs:
         if 'jobs' not in self.__dict__:
             self.jobs = []
 
+        if 'stopped_stack' not in self.__dict__:
+            self.stopped_stack = []
+
     def __str__(self):
-        return '\n'.join('[%i]\t%s' % (index + 1, str(job))
-                         for index, job in enumerate(self.jobs))
+
+        out = ''
+        for job in self.jobs:
+            out += '[%i]\t%s\n' % (job.job_number, str(job))
+        return out[:-2]
 
     def add_job(self, command, pid):
         job = Job(command, pid, len(self.jobs) + 1)
@@ -349,10 +360,19 @@ class Jobs:
         print('[%i]\t%s' % (len(self.jobs), str(job.command)))
         threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
-    @staticmethod
-    def wait_job(job):
+    def start_process(self, background=False):
+        job = self.stopped_stack.pop()
+        os.kill(job.pid, signal.SIGCONT)
+        if background:
+            os.waitpid(job.pid, 0)
+
+    def wait_job(self, job):
         os.waitpid(job.pid, 0)
-        Pysh.interupt_prompt('[%i]\t%i done\t%s' % (job.job_number, job.pid, str(job.command)))
+        Pysh.interupt_prompt('[%i]\t%i Done\t%s' % (job.job_number, job.pid, str(job.command)))
+        self.jobs.pop(self.jobs.index(job))
+
+    def no_jobs(self):
+        return len(self.jobs)
 
 
 class Job:
@@ -364,7 +384,12 @@ class Job:
 
     def __str__(self):
         process = subprocess.Popen(['ps', '-p', str(self.pid), '-o', 'state'], stdout=subprocess.PIPE)
-        status = process.stdout.readlines()[1].strip().decode('ascii')[0]  # Eww
+        out = process.stdout.readlines()
+
+        if len(out) == 1:
+            return ''
+
+        status = out[1].strip().decode('ascii')[0]  # Eww
         process.wait()
         if status in ['S', 'I']:
             status = 'sleeping'
