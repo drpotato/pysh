@@ -49,6 +49,9 @@ class Pysh:
             except EOFError:
                 exit()
 
+            if not sys.stdin.isatty():
+                print(input_string)
+
             # Get shell words from input
             command_strings = self.parse_line(input_string)
 
@@ -166,8 +169,14 @@ class BuiltInCommand(Command):
 
         elif self.programme == 'cd':
             # Expand the path and change the shell's directory.
-            real_path = os.path.expanduser(' '.join(self.arguments[1:]))
-            os.chdir(real_path)
+            if len(self.arguments) == 1:
+                os.chdir(os.path.expanduser('~'))
+            else:
+                real_path = os.path.expanduser(' '.join(self.arguments[1:]))
+                try:
+                    os.chdir(real_path)
+                except FileNotFoundError as e:
+                    print('no such file or directory: %s' % ' '.join(self.arguments[1:]))
 
         elif self.programme == 'pwd':
             # Print the current working directory.
@@ -179,11 +188,12 @@ class BuiltInCommand(Command):
 
             if len(self.arguments) > 1:
                 # Run a previously run command.
-                history.run(int(self.arguments[1]))
+                return history.run(int(self.arguments[1]))
 
             else:
                 # Print the history to the user.
                 print(history)
+                return True
 
         # Return whether or not the command needs to be added to history.
         return self.programme not in ('h', 'history')
@@ -260,6 +270,10 @@ class History:
         """
         Run a previously executed command.
         """
+
+        if command_number > len(self.commands):
+            print('no record for: %i' % command_number)
+            return True
         command = self.commands[command_number - 1]
         command.run()
         self.append(command)
