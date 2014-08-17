@@ -50,7 +50,7 @@ class Pysh:
         Starts the shell, listening until 'exit' is called.
         """
 
-        signal.signal(signal.SIGINT, self.do_nothing)
+        signal.signal(signal.SIGINT, (lambda sig, frame: Pysh.interupt_prompt(get_prompt())))
         signal.signal(signal.SIGTSTP, Command.stop_process)
 
         while True:
@@ -117,11 +117,6 @@ class Pysh:
         sys.stdout.write(get_prompt() + readline.get_line_buffer())
         sys.stdout.flush()
 
-
-    @staticmethod
-    def do_nothing(signal, frame):
-        pass
-
     @staticmethod
     def parse_line(line):
         """
@@ -185,7 +180,11 @@ class Command:
             # If the process is not going to run in the background, wait for
             # the programme to finish.
             Command.__current_pid = child
-            child, status = os.wait()
+            try:
+                child, status = os.wait()
+            except InterruptedError:
+                status = None
+
             Command.__current_pid = 0
             return child, status
 
