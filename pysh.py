@@ -75,8 +75,18 @@ class Pysh:
                 command = CommandPipeList(commands, background=background)
                 command.run()
                 self.history.append(command)
-            elif commands and commands[0].run():
-                self.history.append(commands[0])
+            elif commands:
+                result = commands[0].run()
+                if result.__class__.__name__ == 'tuple':
+                    pid, status = result
+                    print(result)
+                    if status is None:
+                        job = Job(command, pid)
+                        job.get_status()
+
+                if result:
+                    self.history.append(commands[0])
+
 
 
     @staticmethod
@@ -138,15 +148,14 @@ class Command:
             # Replace the current programme with execvp
             os.execvp(self.programme, self.arguments)
 
-        # If the process runs in the background, we still need to return this.
-        status = None
 
-        if not self.background:
+        if self.background:
+            # Return the child pid immediatly when running in the background.
+            return child, None
+        else:
             # If the process is not going to run in the background, wait for
             # the programme to finish.
-            _, status = os.wait()
-
-        return child, status
+            return  os.wait()
 
     def __str__(self):
         if self.background:
@@ -172,7 +181,7 @@ class BuiltInCommand(Command):
             if len(self.arguments) == 1:
                 os.chdir(os.path.expanduser('~'))
             else:
-                real_path = os.path.expanduser(' '.join(self.arguments[1:]))
+                real_path = os.path.expanduser(''.join(self.arguments[1:]))
                 try:
                     os.chdir(real_path)
                 except FileNotFoundError as e:
@@ -305,10 +314,25 @@ class Job:
         self.command = command
         self.pid = pid
 
+    def get_status(self):
+        status_file = open(os.path.join('/proc', str(self.pid), 'status'), 'r')
+        status_list = [item.split(':') for item in status_file.read().split('\n') if item]
+        status = {}
+        for key, value in status_list:
+            status[key.strip()] = value.strip()
+
+        return status
+
+    def get_state(self):
+
+
+
+    def __str__(self):
+        return ' '.join()
+
 
 def main():
-    shell = Pysh()
-    shell.start()
+    Pysh().start()
 
 if __name__ == '__main__':
     main()
