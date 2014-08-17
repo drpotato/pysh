@@ -1,16 +1,16 @@
 #! /usr/bin/env python3
 
 import os
-import struct
 import sys
+import fcntl
 import shlex
 import signal
-import itertools
-import subprocess
-import fcntl
+import struct
 import termios
 import readline
+import itertools
 import threading
+import subprocess
 
 __author__ = 'Chris Morgan'
 
