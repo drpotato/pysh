@@ -52,9 +52,11 @@ class Pysh:
         Starts the shell, listening until 'exit' is called.
         """
 
+        # Set up signals to handle crtl + z and ctrl + c
         signal.signal(signal.SIGINT, (lambda sig, frame: Pysh.interupt_prompt(get_prompt())))
         signal.signal(signal.SIGTSTP, (lambda sig, frame: self.jobs.stop_process()))
 
+        # Infinite loop, woo!
         while True:
 
             # Stop pycharm complaining.
@@ -62,9 +64,11 @@ class Pysh:
 
             try:
                 input_string = input(get_prompt())
-            except EOFError:
+            except EOFError:  # If we hit the end of a file or user types ctrl + d.
+                self.jobs.kill_all()
                 exit()
 
+            # For the markers.
             if not sys.stdin.isatty():
                 print(input_string)
 
@@ -231,11 +235,14 @@ class BuiltInCommand(Command):
             print(os.getcwd())
 
         elif self.programme == 'jobs':
+            # List jobs running
             jobs = Jobs()
             if jobs.no_jobs():
                 print(jobs)
 
         elif self.programme == 'fg':
+            # Continue a stopped process in the foreground. This does not work for processing that are currently
+            # running.
             if len(self.arguments) > 1:
                 try:
                     Jobs().start_process(job_number=int(self.arguments[1]))
@@ -245,6 +252,7 @@ class BuiltInCommand(Command):
                 Jobs().start_process()
 
         elif self.programme == 'bg':
+            # Continue a stopped process in the background.
             if len(self.arguments) > 1:
                 try:
                     Jobs().start_process(job_number=int(self.arguments[1]), background=True)
@@ -255,7 +263,7 @@ class BuiltInCommand(Command):
 
         elif self.programme == 'kill':
             if len(self.arguments) == 1:
-                print('kill takes exactlt 1 argument')
+                print('kill takes exactly 1 argument')
             else:
                 try:
                     Jobs().kill(int(self.arguments[1]))
@@ -281,33 +289,43 @@ class BuiltInCommand(Command):
 
 class CommandPipeList:
     """
-
+    manages a piping for the shell
     """
     def __init__(self, commands, background=False):
         self.commands = commands
         self.background = background
 
     def run(self):
+        """
+        runs the list of commands, chaining pipes between them to allow throughput of data.
+        """
 
         child = os.fork()
 
         if child == 0:
 
+            # We need to keep a reference to the last read pipe file descriptor, set it as stdin for convenience.
             last_read = sys.stdin.fileno()
 
+            # Cycle through all of the commands (bar the last)
             for command in self.commands[:-1]:
 
+                # Create the read and write pipes for the command to use and then run the command.
+                # Temporarily run it in the background to prevent locking.
                 read, write = os.pipe()
                 command.run(read_fd=last_read, write_fd=write, temp_bg=True)
 
+                # So we can use the new pipe in the next iteration.
                 last_read = read
+
+            # Run the last command in the list, print to stdout.
             self.commands[-1].run(read_fd=last_read, write_fd=sys.stdout.fileno())
 
             # Finished piping off the commands, exit.
             exit()
 
-        # Wait for the pipe running process to finish.
         if not self.background:
+            # Wait for the pipe running process to finish.
             Jobs().set_current_pid(child)
             try:
                 child, status = os.wait()
@@ -369,6 +387,13 @@ class History:
 
 
 class Jobs:
+    """
+    Jobs are a bit of a mess, the functionality is a bit all over the place and needs to be consolidated, but I've run
+    out of time.
+
+    Jobs handles background processes, as well as running commands (this really should be move out).
+    Jobs is also another example of the Borg design pattern.
+    """
 
     __shared_state = {}
 
@@ -378,10 +403,12 @@ class Jobs:
             self.jobs = []
             self.stopped_stack = []
             self.current_pid = 0
-            self.killing_all = False
 
     def __str__(self):
-
+        """
+        creates a string that lists all the background jobs
+        :return: a string of all the jobs
+        """
         out = ''
         for job in self.jobs:
             out += '[%i]\t%s\n' % (job.job_number, str(job))
@@ -397,6 +424,8 @@ class Jobs:
         self.jobs.append(job)
         print('[%i]\t%s' % (new_job_number, str(job.command)))
 
+        # This does something different to bash, we start a new thread to wait for the process to finish and then
+        # notify us when it has. More like zsh.
         threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
     def start_process(self, job_number=0,background=False):
@@ -420,9 +449,12 @@ class Jobs:
                 self.stopped_stack.append(job)
                 self.jobs.append(job)
         else:
+            # This does something different to bash, we start a new thread to wait for the process to finish and then
+            # notify us when it has. More like zsh.
             threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
     def wait_job(self, job):
+        # Wait for the process to finish and notify user.
         os.waitpid(job.pid, 0)
         Pysh.interupt_prompt('[%i]\t%i %s\t%s' % (job.job_number, job.pid, job.get_status(), str(job.command)))
         self.jobs.pop(self.jobs.index(job))
@@ -472,7 +504,9 @@ class Jobs:
             os.kill(job.pid, signal.SIGKILL)
 
     def kill_all(self):
-        self.killing_all = True
+        """
+        Kills all background processes.
+        """
         for job in self.jobs:
             os.kill(job.pid, signal.SIGKILL)
 
@@ -485,6 +519,9 @@ class Job:
         self.job_number = job_number
 
     def get_status(self):
+        """
+        Get the status of the job, uses subprocess for convenience.
+        """
         process = subprocess.Popen(['ps', '-p', str(self.pid), '-o', 'state'], stdout=subprocess.PIPE)
 
         out = process.stdout.readlines()
@@ -494,19 +531,24 @@ class Job:
 
         status = out[1].strip().decode('ascii')[0]  # Eww
         process.wait()
-        if status in ['S', 'I']:
+        if status == 'S':
             return 'sleeping'
+        elif status == 'I':
+            return 'idle'
         elif status == 'R':
-            return 'running'
+            return 'runnable'
         elif status == 'Z':
             return 'zombie'
         elif status == 'T':
             return 'stopped'
         else:
-            return 'dunno...'
+            return 'bigfoot'  # This should never happen.
 
     def __str__(self):
         status = self.get_status()
+        if status == 'zombie':
+            os.waitpid(self.pid, 0)
+            status = 'done'
         return '%s %s' % (status, str(self.command))
 
 
