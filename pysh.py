@@ -12,16 +12,18 @@ import itertools
 import threading
 import subprocess
 
-__author__ = 'Chris Morgan'
+"""
+Author: Chris Morgan
+UPI:    cmor149
+ID:     1744263
+Email:  chris.j.r.morgan@gmail.com
+"""
 
 
 # Use this later for flexibility.
 def get_prompt():
 
-    user = os.environ['USER']
-    dir = os.getcwd().split('/')[-1]
-
-    return '%s $ ' % user
+    return 'psh> '
 
 
 class Pysh:
@@ -173,7 +175,11 @@ class Command:
             os.dup2(write_fd, sys.stdout.fileno())
 
             # Replace the current programme with execvp
-            os.execvp(self.programme, self.arguments)
+            try:
+                os.execvp(self.programme, self.arguments)
+            except FileNotFoundError as e:
+                print('command not found: %s' % self.programme)
+                return
 
         if self.background or temp_bg:
             # Return the child pid immediately when running in the background.
@@ -231,18 +237,30 @@ class BuiltInCommand(Command):
 
         elif self.programme == 'fg':
             if len(self.arguments) > 1:
-                Jobs().start_process(job_number=int(self.arguments[1]))
+                try:
+                    Jobs().start_process(job_number=int(self.arguments[1]))
+                except NoSuchJob as e:
+                    print(e)
             else:
                 Jobs().start_process()
 
         elif self.programme == 'bg':
             if len(self.arguments) > 1:
-                Jobs().start_process(job_number=int(self.arguments[1]), background=True)
+                try:
+                    Jobs().start_process(job_number=int(self.arguments[1]), background=True)
+                except NoSuchJob as e:
+                    print(e)
             else:
                 Jobs().start_process(background=True)
 
         elif self.programme == 'kill':
-            Jobs().kill(int(self.arguments[1]))
+            if len(self.arguments) == 1:
+                print('kill takes exactlt 1 argument')
+            else:
+                try:
+                    Jobs().kill(int(self.arguments[1]))
+                except NoSuchJob as e:
+                    print(e)
 
         elif self.programme in ('h', 'history'):
             # Access this shell's history
@@ -383,6 +401,10 @@ class Jobs:
 
     def start_process(self, job_number=0,background=False):
 
+        if not self.stopped_stack:
+            print('no stopped processes')
+            return
+
         if job_number:
             job = self.stopped_stack.pop(self.stopped_stack.index(self.get_job_by_number(job_number)))
         else:
@@ -423,7 +445,7 @@ class Jobs:
         for job in self.jobs:
             if job.job_number == job_number:
                 return job
-        return None
+        raise NoSuchJob(job_number)
 
     def no_jobs(self):
         return len(self.jobs)
@@ -448,7 +470,6 @@ class Jobs:
         job = self.get_job_by_number(job_number)
         if job:
             os.kill(job.pid, signal.SIGKILL)
-
 
     def kill_all(self):
         self.killing_all = True
@@ -487,6 +508,14 @@ class Job:
     def __str__(self):
         status = self.get_status()
         return '%s %s' % (status, str(self.command))
+
+
+class NoSuchJob(Exception):
+    def __init__(self, job_number):
+        self.job_number = job_number
+
+    def __str__(self):
+        return 'no such job: %s' % self.job_number
 
 
 if __name__ == '__main__':
