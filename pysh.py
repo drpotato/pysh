@@ -21,7 +21,7 @@ def get_prompt():
     user = os.environ['USER']
     dir = os.getcwd().split('/')[-1]
 
-    return '[%s]->%s $ ' % (user, dir)
+    return '%s $ ' % user
 
 
 class Pysh:
@@ -36,7 +36,7 @@ class Pysh:
         use arrow keys to navigate history
     """
 
-    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit', 'jobs')
+    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit', 'jobs', 'fg')
 
     def __init__(self):
         """
@@ -51,7 +51,7 @@ class Pysh:
         """
 
         signal.signal(signal.SIGINT, (lambda sig, frame: Pysh.interupt_prompt(get_prompt())))
-        signal.signal(signal.SIGTSTP, Command.stop_process)
+        signal.signal(signal.SIGTSTP, (lambda sig, frame: self.jobs.stop_process()))
 
         while True:
 
@@ -69,35 +69,37 @@ class Pysh:
             # Get shell words from input
             command_strings = self.parse_line(input_string)
 
-            if command_strings and command_strings[-1][-1] == '&':
+            if not command_strings:
+                continue
+
+            if command_strings[-1][-1] == '&':
                 background = True
                 command_strings[-1].pop()
             else:
                 background = False
 
-
-            # Build the list of commands to run. Built in commands are differentiated from other commands.
-            commands = []
-            for command in command_strings:
-                if command[0] in self.__built_in_commands:
-                    commands.append(BuiltInCommand(command, background=background))
+            if len(command_strings) < 2:
+                if command_strings[0][0] in self.__built_in_commands:
+                    command = BuiltInCommand(command_strings[0], background=background)
                 else:
-                    commands.append(Command(command, background=background))
-
-            # If there are multiple commands, we need to create a piping list, otherwise just run the command.
-            if len(commands) > 1:
+                    command = Command(command_strings[0], background=background)
+            else:
+                commands = []
+                for sub_command in command_strings:
+                    if sub_command[0] in self.__built_in_commands:
+                        commands.append(BuiltInCommand(sub_command))
+                    else:
+                        commands.append(Command(sub_command))
                 command = CommandPipeList(commands, background=background)
-                command.run()
-                self.history.append(command)
-            elif commands:
-                result = commands[0].run()
-                if result.__class__.__name__ == 'tuple':
-                    pid, status = result
-                    if status is None:
-                        self.jobs.add_job(commands[0], pid)
 
-                if result:
-                    self.history.append(commands[0])
+            result = self.jobs.run(command)
+            if result.__class__.__name__ == 'tuple':
+                pid, status = result
+                if status is None:
+                    self.jobs.add_job(command, pid)
+
+            if result:
+                self.history.append(command)
 
     @staticmethod
     def interupt_prompt(string=''):
@@ -151,7 +153,7 @@ class Command:
         self.arguments = arguments
         self.background = background
 
-    def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno()):
+    def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno(), temp_bg=False):
         """
         Runs the command and manages the child process.
 
@@ -173,25 +175,19 @@ class Command:
             # Replace the current programme with execvp
             os.execvp(self.programme, self.arguments)
 
-        if self.background:
-            # Return the child pid immediatly when running in the background.
+        if self.background or temp_bg:
+            # Return the child pid immediately when running in the background.
             return child, None
         else:
             # If the process is not going to run in the background, wait for
             # the programme to finish.
-            Command.__current_pid = child
+            Jobs().set_current_pid(child)
             try:
                 child, status = os.wait()
             except InterruptedError:
                 status = None
-
-            Command.__current_pid = 0
             return child, status
 
-    @staticmethod
-    def stop_process(sig, frame):
-        if Command.__current_pid:
-            os.kill(Command.__current_pid, signal.SIGSTOP)
 
     def __str__(self):
         if self.background:
@@ -204,12 +200,13 @@ class Command:
 
 class BuiltInCommand(Command):
 
-    def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno()):
+    def run(self, read_fd=sys.stdin.fileno(), write_fd=sys.stdout.fileno(), temp_bg=False):
         """
         Run the built in command.
         """
         if self.programme == 'exit':
             # Break out of loop.
+            Jobs().kill_all()
             exit()
 
         elif self.programme == 'cd':
@@ -231,6 +228,9 @@ class BuiltInCommand(Command):
             jobs = Jobs()
             if jobs.no_jobs():
                 print(jobs)
+
+        elif self.programme == 'fg':
+            Jobs().start_process()
 
         elif self.programme in ('h', 'history'):
             # Access this shell's history
@@ -268,11 +268,9 @@ class CommandPipeList:
             for command in self.commands[:-1]:
 
                 read, write = os.pipe()
-                command.background = True
-                command.run(read_fd=last_read, write_fd=write)
+                command.run(read_fd=last_read, write_fd=write, temp_bg=True)
 
                 last_read = read
-
             self.commands[-1].run(read_fd=last_read, write_fd=sys.stdout.fileno())
 
             # Finished piping off the commands, exit.
@@ -280,9 +278,14 @@ class CommandPipeList:
 
         # Wait for the pipe running process to finish.
         if not self.background:
-            _, status = os.wait()
-            return status
+            Jobs().set_current_pid(child)
+            try:
+                child, status = os.wait()
+            except InterruptedError:
+                status = None
+            return child, status
 
+        return child, None
 
     def __str__(self):
         return ' | '.join([str(command) for command in self.commands])
@@ -302,7 +305,7 @@ class History:
         self.__dict__ = self.__shared_state
 
         # If commands doesn't exist in the dictionary, add it.
-        if 'commands' not in self.__dict__:
+        if not self.__dict__:
             self.commands = []
 
     def __str__(self):
@@ -341,11 +344,12 @@ class Jobs:
 
     def __init__(self):
         self.__dict__ = self.__shared_state
-        if 'jobs' not in self.__dict__:
+        if not self.__dict__:
             self.jobs = []
-
-        if 'stopped_stack' not in self.__dict__:
             self.stopped_stack = []
+            self.current_command = None
+            self.current_pid = 0
+            self.killing_all = False
 
     def __str__(self):
 
@@ -361,8 +365,10 @@ class Jobs:
             new_job_number = self.jobs[-1].job_number + 1
 
         job = Job(command, pid, new_job_number)
+        print('%i - %i' % (pid, self.current_pid))
         self.jobs.append(job)
         print('[%i]\t%s' % (new_job_number, str(job.command)))
+
         threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
     def start_process(self, background=False):
@@ -373,11 +379,36 @@ class Jobs:
 
     def wait_job(self, job):
         os.waitpid(job.pid, 0)
-        Pysh.interupt_prompt('[%i]\t%i Done\t%s' % (job.job_number, job.pid, str(job.command)))
+        Pysh.interupt_prompt('[%i]\t%i %s\t%s' % (job.job_number, job.pid, job.get_status(), str(job.command)))
         self.jobs.pop(self.jobs.index(job))
+
+    def run(self, command):
+        self.current_command = command
+        result = command.run()
+        self.current_pid = 0
+        return result
 
     def no_jobs(self):
         return len(self.jobs)
+
+    def get_job_by_pid(self, pid):
+        for job in self.jobs:
+            if job.pid == pid:
+                return job
+        return None
+
+    def stop_process(self):
+        if self.current_pid:
+            self.stopped_stack.append(self.get_job_by_pid(self.current_pid))
+            os.kill(self.current_pid, signal.SIGSTOP)
+
+    def set_current_pid(self, pid):
+        self.current_pid = pid
+
+    def kill_all(self):
+        self.killing_all = True
+        for job in self.jobs:
+            os.kill(job.pid, signal.SIGKILL)
 
 
 class Job:
@@ -387,25 +418,29 @@ class Job:
         self.pid = pid
         self.job_number = job_number
 
-    def __str__(self):
+    def get_status(self):
         process = subprocess.Popen(['ps', '-p', str(self.pid), '-o', 'state'], stdout=subprocess.PIPE)
+
         out = process.stdout.readlines()
 
         if len(out) == 1:
-            return ''
+            return 'done'
 
         status = out[1].strip().decode('ascii')[0]  # Eww
         process.wait()
         if status in ['S', 'I']:
-            status = 'sleeping'
+            return 'sleeping'
         elif status == 'R':
-            status = 'running'
+            return 'running'
         elif status == 'Z':
-            status = 'zombie'
+            return 'zombie'
         elif status == 'T':
-            status = 'stopped'
+            return 'stopped'
         else:
-            status = 'dunno...'
+            return 'dunno...'
+
+    def __str__(self):
+        status = self.get_status()
         return '%s %s' % (status, str(self.command))
 
 
