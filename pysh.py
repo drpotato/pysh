@@ -185,7 +185,7 @@ class Command:
             try:
                 child, status = os.wait()
             except InterruptedError:
-                status = None
+                status = 'stopped'
             return child, status
 
 
@@ -282,7 +282,7 @@ class CommandPipeList:
             try:
                 child, status = os.wait()
             except InterruptedError:
-                status = None
+                status = 'stopped'
             return child, status
 
         return child, None
@@ -347,7 +347,6 @@ class Jobs:
         if not self.__dict__:
             self.jobs = []
             self.stopped_stack = []
-            self.current_command = None
             self.current_pid = 0
             self.killing_all = False
 
@@ -365,7 +364,6 @@ class Jobs:
             new_job_number = self.jobs[-1].job_number + 1
 
         job = Job(command, pid, new_job_number)
-        print('%i - %i' % (pid, self.current_pid))
         self.jobs.append(job)
         print('[%i]\t%s' % (new_job_number, str(job.command)))
 
@@ -373,9 +371,12 @@ class Jobs:
 
     def start_process(self, background=False):
         job = self.stopped_stack.pop()
+        self.current_pid = 0
         os.kill(job.pid, signal.SIGCONT)
         if background:
             os.waitpid(job.pid, 0)
+        else:
+            threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
     def wait_job(self, job):
         os.waitpid(job.pid, 0)
@@ -383,23 +384,24 @@ class Jobs:
         self.jobs.pop(self.jobs.index(job))
 
     def run(self, command):
-        self.current_command = command
         result = command.run()
+        if result.__class__.__name__ == 'tuple' and result[1] == 'stopped':
+            new_job_number = 1
+            if self.jobs:
+                new_job_number = self.jobs[-1].job_number + 1
+
+            new_job = Job(command, self.current_pid, new_job_number)
+            self.stopped_stack.append(new_job)
+            self.jobs.append(new_job)
+            print('[%i]\t%s' % (new_job_number, str(command)))
         self.current_pid = 0
         return result
 
     def no_jobs(self):
         return len(self.jobs)
 
-    def get_job_by_pid(self, pid):
-        for job in self.jobs:
-            if job.pid == pid:
-                return job
-        return None
-
     def stop_process(self):
         if self.current_pid:
-            self.stopped_stack.append(self.get_job_by_pid(self.current_pid))
             os.kill(self.current_pid, signal.SIGSTOP)
 
     def set_current_pid(self, pid):
