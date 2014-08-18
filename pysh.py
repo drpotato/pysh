@@ -36,7 +36,7 @@ class Pysh:
         use arrow keys to navigate history
     """
 
-    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit', 'jobs', 'fg', 'bg')
+    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit', 'jobs', 'fg', 'bg', 'kill')
 
     def __init__(self):
         """
@@ -230,7 +230,19 @@ class BuiltInCommand(Command):
                 print(jobs)
 
         elif self.programme == 'fg':
-            Jobs().start_process()
+            if len(self.arguments) > 1:
+                Jobs().start_process(job_number=int(self.arguments[1]))
+            else:
+                Jobs().start_process()
+
+        elif self.programme == 'bg':
+            if len(self.arguments) > 1:
+                Jobs().start_process(job_number=int(self.arguments[1]), background=True)
+            else:
+                Jobs().start_process(background=True)
+
+        elif self.programme == 'kill':
+            Jobs().kill(int(self.arguments[1]))
 
         elif self.programme in ('h', 'history'):
             # Access this shell's history
@@ -369,15 +381,22 @@ class Jobs:
 
         threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
-    def start_process(self, background=False):
-        job = self.stopped_stack.pop()
+    def start_process(self, job_number=0,background=False):
+
+        if job_number:
+            job = self.stopped_stack.pop(self.stopped_stack.index(self.get_job_by_number(job_number)))
+        else:
+            job = self.stopped_stack.pop()
+
         self.current_pid = 0
         os.kill(job.pid, signal.SIGCONT)
         if not background:
+            self.jobs.pop(self.jobs.index(job))
             try:
                 child, status = os.waitpid(job.pid, 0)
             except InterruptedError:
                 self.stopped_stack.append(job)
+                self.jobs.append(job)
         else:
             threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
@@ -400,15 +419,36 @@ class Jobs:
         self.current_pid = 0
         return result
 
+    def get_job_by_number(self, job_number):
+        for job in self.jobs:
+            if job.job_number == job_number:
+                return job
+        return None
+
     def no_jobs(self):
         return len(self.jobs)
 
-    def stop_process(self):
-        if self.current_pid:
-            os.kill(self.current_pid, signal.SIGSTOP)
+    def stop_process(self, job_number=0):
+
+        if job_number:
+            job = self.get_job_by_number(job_number)
+            if job:
+                pid = job.pid
+            else:
+                pid = 0
+        else:
+            pid = self.current_pid
+        if pid:
+            os.kill(pid, signal.SIGSTOP)
 
     def set_current_pid(self, pid):
         self.current_pid = pid
+
+    def kill(self, job_number):
+        job = self.get_job_by_number(job_number)
+        if job:
+            os.kill(job.pid, signal.SIGKILL)
+
 
     def kill_all(self):
         self.killing_all = True
