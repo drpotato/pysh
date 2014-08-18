@@ -36,7 +36,7 @@ class Pysh:
         use arrow keys to navigate history
     """
 
-    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit', 'jobs', 'fg')
+    __built_in_commands = ('h', 'history', 'cd', 'pwd', 'exit', 'jobs', 'fg', 'bg')
 
     def __init__(self):
         """
@@ -373,8 +373,11 @@ class Jobs:
         job = self.stopped_stack.pop()
         self.current_pid = 0
         os.kill(job.pid, signal.SIGCONT)
-        if background:
-            os.waitpid(job.pid, 0)
+        if not background:
+            try:
+                child, status = os.waitpid(job.pid, 0)
+            except InterruptedError:
+                self.stopped_stack.append(job)
         else:
             threading.Thread(target=self.wait_job, args=tuple([job])).start()
 
